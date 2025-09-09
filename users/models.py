@@ -1,36 +1,3 @@
-# # users/models.py
-# from django.contrib.auth.models import AbstractUser
-# from django.db import models
-#
-#
-# class User(AbstractUser):
-#     USER_TYPES = (
-#         ('client', 'Client'),
-#         ('freelancer', 'Freelancer'),
-#     )
-#
-#     email = models.EmailField(unique=True)
-#     user_type = models.CharField(max_length=20, choices=USER_TYPES)
-#     phone_number = models.CharField(max_length=15, blank=True)
-#     profile_picture = models.ImageField(upload_to='profiles/', blank=True)
-#     bio = models.TextField(blank=True)
-#     skills = models.JSONField(default=list, blank=True)  # For freelancers
-#     company_name = models.CharField(max_length=100, blank=True)  # For clients
-#
-#     # Email verification
-#     is_verified = models.BooleanField(default=False)
-#     verification_token = models.CharField(max_length=100, blank=True)
-#
-#     # Security fields
-#     last_login_ip = models.GenericIPAddressField(blank=True, null=True)
-#     mfa_enabled = models.BooleanField(default=False)
-#
-#     USERNAME_FIELD = 'email'
-#     REQUIRED_FIELDS = ['username']
-#
-#     def __str__(self):
-#         return f"{self.email} ({self.user_type})"
-
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
@@ -71,7 +38,6 @@ class User(AbstractUser):
         ('Asia/Tokyo', 'Tokyo'),
         ('Asia/Shanghai', 'Shanghai'),
         ('Asia/Kolkata', 'India Standard Time'),
-        # Add more as needed
     )
 
     # Basic Information
@@ -87,8 +53,8 @@ class User(AbstractUser):
     timezone = models.CharField(max_length=50, choices=TIMEZONE_CHOICES, default='UTC')
 
     # Professional Information
-    title = models.CharField(max_length=100, blank=True)  # Job title/profession
-    company_name = models.CharField(max_length=100, blank=True)  # For clients
+    title = models.CharField(max_length=100, blank=True)
+    company_name = models.CharField(max_length=100, blank=True)
     website = models.URLField(blank=True)
     linkedin_url = models.URLField(blank=True)
     github_url = models.URLField(blank=True)
@@ -98,7 +64,7 @@ class User(AbstractUser):
     skills = models.JSONField(default=list, blank=True)
     experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVELS, blank=True)
     years_of_experience = models.PositiveIntegerField(null=True, blank=True)
-    languages_spoken = models.JSONField(default=list, blank=True)  # ['English', 'Spanish', etc.]
+    languages_spoken = models.JSONField(default=list, blank=True)
 
     # Freelancer-specific fields
     hourly_rate = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -116,7 +82,7 @@ class User(AbstractUser):
     total_projects_completed = models.PositiveIntegerField(default=0)
 
     # Client-specific fields
-    company_size = models.CharField(max_length=50, blank=True)  # 'startup', 'small', 'medium', 'large'
+    company_size = models.CharField(max_length=50, blank=True)
     industry = models.CharField(max_length=100, blank=True)
     total_projects_posted = models.PositiveIntegerField(default=0)
     total_spent = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
@@ -124,9 +90,9 @@ class User(AbstractUser):
     # Email verification and security
     is_verified = models.BooleanField(default=False)
     email_verification_token = models.CharField(max_length=100, blank=True)
+    email_verification_expires = models.DateTimeField(null=True, blank=True)
     phone_verified = models.BooleanField(default=False)
-    identity_verified = models.BooleanField(default=False)  # For freelancers
-
+    identity_verified = models.BooleanField(default=False)
     # Security fields
     last_login_ip = models.GenericIPAddressField(blank=True, null=True)
     mfa_enabled = models.BooleanField(default=False)
@@ -137,8 +103,8 @@ class User(AbstractUser):
     # Profile completion and activity
     profile_completion_percentage = models.PositiveIntegerField(default=0)
     last_activity = models.DateTimeField(auto_now=True)
-    is_featured = models.BooleanField(default=False)  # For promoted profiles
-    is_premium = models.BooleanField(default=False)  # Premium membership
+    is_featured = models.BooleanField(default=False)
+    is_premium = models.BooleanField(default=False)
     premium_expires = models.DateTimeField(null=True, blank=True)
 
     # Preferences
@@ -241,6 +207,36 @@ class User(AbstractUser):
 
         self.save(update_fields=['login_attempts', 'last_failed_login', 'account_locked_until'])
 
+    def generate_email_verification_token(self):
+        """Generate a 6-digit verification code and set expiry"""
+        import random
+        import string
+        from django.utils import timezone
+
+        code = ''.join(random.choices(string.digits, k=6))
+        self.email_verification_token = code
+        self.email_verification_expires = timezone.now() + timezone.timedelta(minutes=15)
+        self.save(update_fields=['email_verification_token', 'email_verification_expires'])
+        return code
+
+    def is_email_verification_token_valid(self, token):
+        """Check if the provided token is valid and not expired"""
+        from django.utils import timezone
+
+        if not self.email_verification_token or not self.email_verification_expires:
+            return False
+
+        if timezone.now() > self.email_verification_expires:
+            return False
+
+        return self.email_verification_token == token
+
+    def clear_email_verification_token(self):
+        """Clear the verification token after successful verification"""
+        self.email_verification_token = ''
+        self.email_verification_expires = None
+        self.save(update_fields=['email_verification_token', 'email_verification_expires'])
+
 
 class UserEducation(models.Model):
     """Education history for users (mainly freelancers)"""
@@ -316,14 +312,11 @@ class UserPortfolio(models.Model):
 
 
 class UserSocialLink(models.Model):
-    """Social media links for users"""
     PLATFORM_CHOICES = (
         ('linkedin', 'LinkedIn'),
         ('github', 'GitHub'),
         ('twitter', 'Twitter'),
         ('instagram', 'Instagram'),
-        ('dribbble', 'Dribbble'),
-        ('behance', 'Behance'),
         ('facebook', 'Facebook'),
         ('youtube', 'YouTube'),
         ('website', 'Personal Website'),
